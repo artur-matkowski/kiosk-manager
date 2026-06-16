@@ -135,3 +135,7 @@ gracefully (SIGTERM, SIGKILL fallback) when the service stops.
   in the config, and that `DISPLAY`/Wayland env in the unit matches the session.
 - **Nothing shows but logs say "launched chromium":** display/session env mismatch in
   the unit (wrong `DISPLAY`, `XAUTHORITY`, or X11-vs-Wayland).
+
+## License
+
+[MIT](LICENSE). Bundles [cpp-httplib](https://github.com/yhirose/cpp-httplib) (also MIT).
