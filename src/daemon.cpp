@@ -329,6 +329,11 @@ void Daemon::setup_routes() {
         res.set_content("reloaded\n" + status_text(), "text/plain");
     });
 
+    svr_.Post("/control/refresh", [this](const httplib::Request &, httplib::Response &res) {
+        hub_.broadcast("event: refresh\ndata: 1\n\n");
+        res.set_content("refreshed\n", "text/plain");
+    });
+
     svr_.Get("/control/status", [this](const httplib::Request &, httplib::Response &res) {
         res.set_content(status_text(), "text/plain");
     });

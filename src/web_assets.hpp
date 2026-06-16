@@ -118,6 +118,11 @@ inline constexpr const char *kIndexHtml = R"HTML(<!doctype html>
     var es = new EventSource('/events');
     es.addEventListener('switch', function (e) { setActive(parseInt(e.data, 10)); });
     es.addEventListener('reload', function () { loadConfig(); });
+    es.addEventListener('refresh', function () {
+      for (var i = 0; i < frames.length; i++) {
+        if (frames[i].src) frames[i].src = safeUrl(urls[i]);
+      }
+    });
     // EventSource auto-reconnects on error (e.g. when the service restarts).
   }
 

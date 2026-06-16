@@ -27,6 +27,7 @@ void usage() {
         "  -status               print current state\n"
         "  -list                 list configured dashboards\n"
         "  -reload               re-read the config file\n"
+        "  -refresh              reload all dashboard pages (like F5)\n"
         "  -daemon               run the background service\n"
         "options: -port N, -config PATH\n");
 }
@@ -34,7 +35,7 @@ void usage() {
 } // namespace
 
 int run_cli(const std::vector<std::string> &args) {
-    std::string action;     // "next","prev","page","status","list","reload"
+    std::string action;     // "next","prev","page","status","list","reload","refresh"
     std::string page_arg;
     std::string config_override;
     int port_override = 0;
@@ -46,6 +47,7 @@ int run_cli(const std::vector<std::string> &args) {
         else if (a == "-status") action = "status";
         else if (a == "-list") action = "list";
         else if (a == "-reload") action = "reload";
+        else if (a == "-refresh") action = "refresh";
         else if (a == "-page") {
             action = "page";
             if (i + 1 < args.size()) page_arg = args[++i];
@@ -77,6 +79,7 @@ int run_cli(const std::vector<std::string> &args) {
     else if (action == "next") res = cli.Post("/control/next", "", "text/plain");
     else if (action == "prev") res = cli.Post("/control/prev", "", "text/plain");
     else if (action == "reload") res = cli.Post("/control/reload", "", "text/plain");
+    else if (action == "refresh") res = cli.Post("/control/refresh", "", "text/plain");
     else if (action == "page") res = cli.Post("/control/page/" + page_arg, "", "text/plain");
 
     if (!res) {

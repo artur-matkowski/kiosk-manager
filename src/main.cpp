@@ -29,7 +29,8 @@ void print_help() {
         "  kiosk-manager -page N            show dashboard N (1-based)\n"
         "  kiosk-manager -status            print current state\n"
         "  kiosk-manager -list              list configured dashboards\n"
-        "  kiosk-manager -reload            re-read the config file\n\n"
+        "  kiosk-manager -reload            re-read the config file\n"
+        "  kiosk-manager -refresh           reload all dashboard pages (like F5)\n\n"
         "Options: -config PATH, -port N\n");
 }
 
