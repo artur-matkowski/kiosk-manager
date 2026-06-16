@@ -17,7 +17,9 @@
 #include <thread>
 #include <vector>
 
+#include <fcntl.h>
 #include <pthread.h>
+#include <sys/file.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -353,6 +355,7 @@ void Daemon::kill_chromium() {
 }
 
 void Daemon::supervise_chromium() {
+    int backoff_s = 3; // relaunch delay; grows if Chromium keeps exiting almost immediately
     while (!stop_) {
         std::string url = "http://127.0.0.1:" + std::to_string(cfg_.port) + "/";
         std::string udd = cfg_.user_data_dir;
@@ -383,6 +386,7 @@ void Daemon::supervise_chromium() {
         for (auto &a : args) argv.push_back(const_cast<char *>(a.c_str()));
         argv.push_back(nullptr);
 
+        auto launched_at = std::chrono::steady_clock::now();
         pid_t pid = ::fork();
         if (pid == 0) {
             setpgid(0, 0); // own process group so we can signal the whole tree
@@ -411,15 +415,64 @@ void Daemon::supervise_chromium() {
         int status = 0;
         ::waitpid(pid, &status, 0);
         chromium_pid_.store(-1);
-
         if (stop_) break;
-        std::fprintf(stderr, "kiosk-manager: chromium exited (status %d); relaunching in 3s\n", status);
-        for (int i = 0; i < 30 && !stop_; ++i)
+
+        long ran_s = static_cast<long>(std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::steady_clock::now() - launched_at).count());
+
+        // A healthy kiosk runs for a long time. A near-instant exit means something
+        // is persistently wrong — most often another instance or a stale Chromium
+        // already owns this profile, so Chromium hands off the URL and exits 0. Back
+        // off exponentially instead of relaunching every 3s, which would peg the Pi.
+        bool fast_exit = ran_s < 8;
+        int delay_s = fast_exit ? backoff_s : 3;
+        if (fast_exit)
+            std::fprintf(stderr,
+                         "kiosk-manager: chromium exited (status %d) after %lds; relaunching in %ds "
+                         "(fast exit — another instance or a stale chromium may hold %s)\n",
+                         status, ran_s, delay_s, udd.c_str());
+        else
+            std::fprintf(stderr,
+                         "kiosk-manager: chromium exited (status %d) after %lds; relaunching in %ds\n",
+                         status, ran_s, delay_s);
+
+        for (int i = 0; i < delay_s * 10 && !stop_; ++i)
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+        backoff_s = fast_exit ? std::min(backoff_s * 2, 60) : 3;
     }
 }
 
 int Daemon::run() {
+    // Single-instance guard: exactly one daemon may drive a given Chromium profile.
+    // The listen port is NOT a guard — httplib enables SO_REUSEPORT, so a second
+    // daemon would happily bind the same port and then fight over the profile,
+    // making Chromium hand off the URL and exit immediately in an endless relaunch
+    // storm. Take an exclusive lock on the profile before binding anything.
+    mkdirs(cfg_.user_data_dir);
+    const std::string lockpath = cfg_.user_data_dir + "/instance.lock";
+    int lock_fd = ::open(lockpath.c_str(), O_CREAT | O_RDWR | O_CLOEXEC, 0600);
+    if (lock_fd < 0) {
+        std::fprintf(stderr, "kiosk-manager: cannot open lock file %s: %s (continuing)\n",
+                     lockpath.c_str(), std::strerror(errno));
+    } else if (::flock(lock_fd, LOCK_EX | LOCK_NB) != 0) {
+        if (errno == EWOULDBLOCK) {
+            std::fprintf(stderr,
+                         "kiosk-manager: another daemon is already using profile %s; exiting\n",
+                         cfg_.user_data_dir.c_str());
+            ::close(lock_fd);
+            return 1;
+        }
+        std::fprintf(stderr, "kiosk-manager: flock(%s) failed: %s (continuing)\n",
+                     lockpath.c_str(), std::strerror(errno));
+    } else if (::ftruncate(lock_fd, 0) == 0) { // record our pid for diagnostics
+        char buf[32];
+        int n = std::snprintf(buf, sizeof(buf), "%d\n", static_cast<int>(::getpid()));
+        if (n > 0) (void)::write(lock_fd, buf, static_cast<size_t>(n));
+    }
+    // lock_fd is intentionally left open for the lifetime of the process; the lock
+    // is released automatically on exit.
+
     // Route SIGTERM/SIGINT to a dedicated thread; ignore SIGPIPE (closed SSE sockets).
     sigset_t set;
     sigemptyset(&set);

@@ -11,9 +11,11 @@ using namespace kiosk;
 
 namespace {
 
-bool is_control_flag(const std::string &a) {
-    return a == "-next" || a == "-prev" || a == "-page" ||
-           a == "-status" || a == "-list" || a == "-reload";
+// Accept GNU-style "--flag" as an alias for this tool's single-dash "-flag"
+// convention, so e.g. "--next" works like "-next".
+std::string normalize_flag(const std::string &a) {
+    if (a.size() > 2 && a[0] == '-' && a[1] == '-') return a.substr(1);
+    return a;
 }
 
 void print_help() {
@@ -34,28 +36,32 @@ void print_help() {
 } // namespace
 
 int main(int argc, char **argv) {
-    std::vector<std::string> args(argv + 1, argv + argc);
+    std::vector<std::string> args;
+    args.reserve(argc > 1 ? static_cast<size_t>(argc - 1) : 0);
+    for (int i = 1; i < argc; ++i) args.push_back(normalize_flag(argv[i]));
 
-    bool daemon = false, control = false, help = false;
+    bool daemon = false, help = false;
     std::string config_override;
     int port_override = 0;
 
     for (size_t i = 0; i < args.size(); ++i) {
         const std::string &a = args[i];
         if (a == "-daemon" || a == "serve") daemon = true;
-        else if (is_control_flag(a)) control = true;
-        else if (a == "-h" || a == "--help" || a == "-help") help = true;
+        else if (a == "-h" || a == "-help") help = true;
         else if (a == "-config") { if (i + 1 < args.size()) config_override = args[++i]; }
         else if (a == "-port") { if (i + 1 < args.size()) port_override = std::atoi(args[++i].c_str()); }
-        // Other tokens (e.g. the N after -page) are parsed by the CLI handler.
+        // Control flags and any unknown tokens are validated by run_cli() below.
     }
 
     if (help) { print_help(); return 0; }
+    if (args.empty()) { print_help(); return 0; } // bare run: show usage, never auto-start a daemon
 
-    // Control flags route to the CLI client unless -daemon was explicitly requested.
-    if (control && !daemon) return run_cli(args);
+    // The background service runs ONLY when explicitly requested with -daemon/serve.
+    // Anything else — a control flag, or a typo like "--bogus" — routes to the CLI
+    // client, which validates arguments and errors on unknown ones. This stops a
+    // mistyped command from silently launching a second, competing daemon.
+    if (!daemon) return run_cli(args);
 
-    // Otherwise run as the background service.
     Config cfg;
     cfg.path = resolve_config_path(config_override);
     std::string err;
