@@ -24,6 +24,9 @@ cmake --build build -j"$(nproc)"
 echo "==> Installing binary to $PREFIX/kiosk-manager"
 install -m 0755 build/kiosk-manager "$PREFIX/kiosk-manager"
 
+echo "==> Installing $PREFIX/kiosk-clear-cache"
+install -m 0755 clear-cache.sh "$PREFIX/kiosk-clear-cache"
+
 echo "==> Installing config to $CONF_DIR/kiosk.conf"
 mkdir -p "$CONF_DIR"
 # Config holds dashboard URLs (with sharing tokens); keep it private to the kiosk user.
