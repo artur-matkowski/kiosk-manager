@@ -1,0 +1,33 @@
+[Unit]
+Description=Kiosk Manager (Grafana dashboard kiosk)
+# Start after the graphical session is up so Chromium has a display.
+After=graphical.target
+Wants=graphical.target
+
+[Service]
+Type=simple
+# Run as your desktop user (the one whose X/Wayland session shows the kiosk).
+# install.sh rewrites this to the user that runs it; 'pi' is just the default.
+User=pi
+
+# X11 (default on most Raspberry Pi OS setups): point Chromium at the running display.
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/pi/.Xauthority
+# --- Wayland (e.g. labwc on newer RPi OS) instead of the two lines above ---
+# Environment=WAYLAND_DISPLAY=wayland-0
+# Environment=XDG_RUNTIME_DIR=/run/user/1000
+# and set 'extra_flags = --ozone-platform=wayland' in kiosk.conf
+
+ExecStart=/usr/local/bin/kiosk-manager -daemon
+Restart=always
+RestartSec=2
+
+# Hardening (kept light so the Chromium GUI process still works).
+NoNewPrivileges=yes
+
+# The service owns the dedicated Chromium profile.
+StateDirectory=kiosk-manager
+# (creates /var/lib/kiosk-manager; user_data_dir below it works out of the box)
+
+[Install]
+WantedBy=graphical.target
